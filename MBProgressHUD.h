@@ -1,12 +1,15 @@
+// SEARCH FOR _MY_CUSTOM_CODE for cancel button changes
+
+
 //
 //  MBProgressHUD.h
-//  Version 0.9.1
+//  Version 0.9
 //  Created by Matej Bukovinski on 2.4.09.
 //
 
 // This code is distributed under the terms and conditions of the MIT license. 
 
-// Copyright (c) 2009-2015 Matej Bukovinski
+// Copyright (c) 2013 Matej Bukovinski
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +36,7 @@
 @protocol MBProgressHUDDelegate;
 
 
-typedef NS_ENUM(NSInteger, MBProgressHUDMode) {
+typedef enum {
 	/** Progress is shown using an UIActivityIndicatorView. This is the default. */
 	MBProgressHUDModeIndeterminate,
 	/** Progress is shown using a round, pie-chart like, progress view. */
@@ -46,16 +49,16 @@ typedef NS_ENUM(NSInteger, MBProgressHUDMode) {
 	MBProgressHUDModeCustomView,
 	/** Shows only labels */
 	MBProgressHUDModeText
-};
+} MBProgressHUDMode;
 
-typedef NS_ENUM(NSInteger, MBProgressHUDAnimation) {
+typedef enum {
 	/** Opacity animation */
 	MBProgressHUDAnimationFade,
 	/** Opacity + scale animation */
 	MBProgressHUDAnimationZoom,
 	MBProgressHUDAnimationZoomOut = MBProgressHUDAnimationZoom,
 	MBProgressHUDAnimationZoomIn
-};
+} MBProgressHUDAnimation;
 
 
 #ifndef MB_INSTANCETYPE
@@ -274,6 +277,12 @@ typedef void (^MBProgressHUDCompletionBlock)();
  */
 @property (copy) MBProgressHUDCompletionBlock completionBlock;
 
+
+/**
+ * A block that gets called after the cancel button was tapped.
+ */
+@property (copy) MBProgressHUDCompletionBlock cancelBlock;
+
 #endif
 
 /** 
@@ -451,6 +460,8 @@ typedef void (^MBProgressHUDCompletionBlock)();
  */
 - (void)hudWasHidden:(MBProgressHUD *)hud;
 
+#pragma mark --- MY_CUSTOM_CODE
+- (void)cancelButtonPressed:(MBProgressHUD *)hud;
 @end
 
 

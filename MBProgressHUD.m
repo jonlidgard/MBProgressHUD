@@ -1,6 +1,6 @@
 //
 // MBProgressHUD.m
-// Version 0.9.1
+// Version 0.9
 // Created by Matej Bukovinski on 2.4.09.
 //
 
@@ -61,6 +61,9 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	id objectForExecution;
 	UILabel *label;
 	UILabel *detailsLabel;
+#pragma mark _MY_CUSTOM_CODE
+	    UIButton *cancelButton;
+
 	BOOL isFinished;
 	CGAffineTransform rotationTransform;
 }
@@ -69,6 +72,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 @property (atomic, MB_STRONG) NSTimer *graceTimer;
 @property (atomic, MB_STRONG) NSTimer *minShowTimer;
 @property (atomic, MB_STRONG) NSDate *showStarted;
+
 
 @end
 
@@ -108,13 +112,13 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 @synthesize activityIndicatorColor;
 #if NS_BLOCKS_AVAILABLE
 @synthesize completionBlock;
+@synthesize cancelBlock;
 #endif
 
 #pragma mark - Class methods
 
 + (MB_INSTANCETYPE)showHUDAddedTo:(UIView *)view animated:(BOOL)animated {
 	MBProgressHUD *hud = [[self alloc] initWithView:view];
-	hud.removeFromSuperViewOnHide = YES;
 	[view addSubview:hud];
 	[hud show:animated];
 	return MB_AUTORELEASE(hud);
@@ -227,6 +231,8 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	[detailsLabel release];
 	[labelText release];
 	[detailsLabelText release];
+#pragma mark _MY_CUSTOM_CODE
+    [cancelButton release];
 	[graceTimer release];
 	[minShowTimer release];
 	[showStarted release];
@@ -253,6 +259,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	} 
 	// ... otherwise show the HUD imediately 
 	else {
+		[self setNeedsDisplay];
 		[self showUsingAnimation:useAnimation];
 	}
 }
@@ -286,6 +293,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 - (void)handleGraceTimer:(NSTimer *)theTimer {
 	// Show the HUD only if the task is still running
 	if (taskInProgress) {
+		[self setNeedsDisplay];
 		[self showUsingAnimation:useAnimation];
 	}
 }
@@ -296,17 +304,21 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 
 #pragma mark - View Hierrarchy
 
+- (BOOL)shouldPerformOrientationTransform {
+	BOOL isPreiOS8 = NSFoundationVersionNumber < kCFCoreFoundationVersionNumber_iOS_8_0;
+	// prior to iOS8 code needs to take care of rotation if it is being added to the window
+	return isPreiOS8 && [self.superview isKindOfClass:[UIWindow class]];
+}
+
 - (void)didMoveToSuperview {
-    [self updateForCurrentOrientationAnimated:NO];
+	if ([self shouldPerformOrientationTransform]) {
+		[self setTransformForCurrentOrientation:NO];
+	}
 }
 
 #pragma mark - Internal show & hide operations
 
 - (void)showUsingAnimation:(BOOL)animated {
-    // Cancel any scheduled hideDelayed: calls
-    [NSObject cancelPreviousPerformRequestsWithTarget:self];
-    [self setNeedsDisplay];
-
 	if (animated && animationType == MBProgressHUDAnimationZoomIn) {
 		self.transform = CGAffineTransformConcat(rotationTransform, CGAffineTransformMakeScale(0.5f, 0.5f));
 	} else if (animated && animationType == MBProgressHUDAnimationZoomOut) {
@@ -468,6 +480,56 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	detailsLabel.font = self.detailsLabelFont;
 	detailsLabel.text = self.detailsLabelText;
 	[self addSubview:detailsLabel];
+
+#pragma mark _MY_CUSTOM_CODE
+	cancelButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
+    cancelButton.titleLabel.font = self.labelFont;
+	cancelButton.titleLabel.adjustsFontSizeToFitWidth = NO;
+	cancelButton.titleLabel.textAlignment = MBLabelAlignmentCenter;
+	cancelButton.titleLabel.opaque = YES;
+	cancelButton.titleLabel.backgroundColor = [UIColor clearColor];
+	cancelButton.titleLabel.textColor = self.labelColor;
+    [cancelButton setTitleColor:self.labelColor forState:UIControlStateNormal];
+    [cancelButton setTitle:@" Cancel  " forState:UIControlStateNormal];
+	cancelButton.titleLabel.numberOfLines = 1;
+    [cancelButton addTarget:self action:@selector(cancelButtonPressed:) forControlEvents:UIControlEventTouchUpInside];
+    [self addSubview:cancelButton];
+    cancelButton.backgroundColor = [UIColor redColor];
+}
+
+#pragma mark _MY_CUSTOM_CODE
+
+
+-(void)tapReceived:(UITapGestureRecognizer *)recognizer{
+    CGPoint loc = [recognizer locationInView:self];
+    
+    CGFloat w = self.size.width;
+    CGFloat h = self.size.height;
+    CGFloat x = self.center.x - w/2;
+    CGFloat y = self.center.y - h/2;
+    CGRect progressRect = CGRectMake(x, y, w, h);
+    
+    //if the tap was within the HUD bezel, then react to it, ignore it otherwise
+    if(CGRectContainsPoint(progressRect, loc)){
+        //do any actions here (cancel operation for example)
+        [self hide:YES];
+    }else{
+        //the tap location was not in the bezel region of the HUD so ignore it.
+        return;
+    }
+}
+
+
+- (IBAction)cancelButtonPressed:(id)sender {
+#if NS_BLOCKS_AVAILABLE
+    if (self.cancelBlock) {
+        self.cancelBlock();
+        self.cancelBlock = NULL;
+    }
+#endif
+    if ([delegate respondsToSelector:@selector(cancelButtonPressed:)]) {
+        [delegate cancelButtonPressed:self];
+    }
 }
 
 - (void)updateIndicators {
@@ -545,6 +607,16 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 		totalSize.height += kPadding;
 	}
 
+#pragma mark _MY_CUSTOM_CODE
+    
+    UILabel *cancelButtonLabel = cancelButton.titleLabel;
+    CGSize cancelButtonSize = MB_TEXTSIZE(cancelButtonLabel.text, cancelButtonLabel.font);
+    cancelButtonSize.width = MIN(cancelButtonSize.width, maxWidth);
+	totalSize.width = MAX(totalSize.width, cancelButtonSize.width);
+	totalSize.height += cancelButtonSize.height;
+    totalSize.height += 4*kPadding;
+
+
 	CGFloat remainingHeight = bounds.size.height - totalSize.height - kPadding - 4 * margin; 
 	CGSize maxSize = CGSizeMake(maxWidth, remainingHeight);
 	CGSize detailsLabelSize = MB_MULTILINE_TEXTSIZE(detailsLabel.text, detailsLabel.font, maxSize, detailsLabel.lineBreakMode);
@@ -583,6 +655,20 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	detailsLabelF.origin.x = round((bounds.size.width - detailsLabelSize.width) / 2) + xPos;
 	detailsLabelF.size = detailsLabelSize;
 	detailsLabel.frame = detailsLabelF;
+
+#pragma mark _MY_CUSTOM_CODE
+
+	yPos += detailsLabelF.size.height;
+
+	if (cancelButtonSize.height > 0.f && (detailsLabelSize.height > 0.f || indicatorF.size.height > 0.f || labelSize.height > 0.f)) {
+		yPos += 4*kPadding;
+	}
+
+    CGRect cancelButtonF;
+    cancelButtonF.origin.y = yPos;
+    cancelButtonF.origin.x = round((bounds.size.width - cancelButtonSize.width) / 2) + xPos;
+    cancelButtonF.size = cancelButtonSize;
+    cancelButton.frame = cancelButtonF;
 	
 	// Enforce minsize and quare rules
 	if (square) {
@@ -727,25 +813,21 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	UIView *superview = self.superview;
 	if (!superview) {
 		return;
+	} else if ([self shouldPerformOrientationTransform]) {
+		[self setTransformForCurrentOrientation:YES];
 	} else {
-		[self updateForCurrentOrientationAnimated:YES];
+		self.frame = self.superview.bounds;
+		[self setNeedsDisplay];
 	}
 }
 
-- (void)updateForCurrentOrientationAnimated:(BOOL)animated {
-    // Stay in sync with the superview in any case
-    if (self.superview) {
-        self.bounds = self.superview.bounds;
-        [self setNeedsDisplay];
-    }
-
-    // Not needed on iOS 8+, compile out when the deployment target allows,
-    // to avoid sharedApplication problems on extension targets
-#if __IPHONE_OS_VERSION_MIN_REQUIRED < 80000
-    // Only needed pre iOS 7 when added to a window
-    BOOL iOS8OrLater = kCFCoreFoundationVersionNumber >= kCFCoreFoundationVersionNumber_iOS_8_0;
-    if (iOS8OrLater || ![self.superview isKindOfClass:[UIWindow class]]) return;
-
+- (void)setTransformForCurrentOrientation:(BOOL)animated {
+	// Stay in sync with the superview
+	if (self.superview) {
+		self.bounds = self.superview.bounds;
+		[self setNeedsDisplay];
+	}
+	
 	UIInterfaceOrientation orientation = [UIApplication sharedApplication].statusBarOrientation;
 	CGFloat radians = 0;
 	if (UIInterfaceOrientationIsLandscape(orientation)) {
@@ -767,7 +849,6 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	if (animated) {
 		[UIView commitAnimations];
 	}
-#endif
 }
 
 @end
@@ -814,7 +895,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	
 	if (_annular) {
 		// Draw background
-		BOOL isPreiOS7 = kCFCoreFoundationVersionNumber < kCFCoreFoundationVersionNumber_iOS_7_0;
+		BOOL isPreiOS7 = NSFoundationVersionNumber < kCFCoreFoundationVersionNumber_iOS_7_0;
 		CGFloat lineWidth = isPreiOS7 ? 5.f : 2.f;
 		UIBezierPath *processBackgroundPath = [UIBezierPath bezierPath];
 		processBackgroundPath.lineWidth = lineWidth;
@@ -846,7 +927,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 		CGFloat radius = (allRect.size.width - 4) / 2;
 		CGFloat startAngle = - ((float)M_PI / 2); // 90 degrees
 		CGFloat endAngle = (self.progress * 2 * (float)M_PI) + startAngle;
-		[_progressTintColor setFill];
+		CGContextSetRGBFillColor(context, 1.0f, 1.0f, 1.0f, 1.0f); // white
 		CGContextMoveToPoint(context, center.x, center.y);
 		CGContextAddArc(context, center.x, center.y, radius, startAngle, endAngle, 0);
 		CGContextClosePath(context);
