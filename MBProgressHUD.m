@@ -62,7 +62,8 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	UILabel *label;
 	UILabel *detailsLabel;
 #pragma mark _MY_CUSTOM_CODE
-	    UIButton *cancelButton;
+    UIGestureRecognizer *tapGestureRecogniser;
+    UILabel *cancelLabel;
 
 	BOOL isFinished;
 	CGAffineTransform rotationTransform;
@@ -203,8 +204,11 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 		
 		taskInProgress = NO;
 		rotationTransform = CGAffineTransformIdentity;
-		
+        tapGestureRecogniser = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapReceived:)];
+	
 		[self setupLabels];
+        
+
 		[self updateIndicators];
 		[self registerForKVO];
 		[self registerForNotifications];
@@ -232,7 +236,8 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	[labelText release];
 	[detailsLabelText release];
 #pragma mark _MY_CUSTOM_CODE
-    [cancelButton release];
+    [tapGestureRecogniser release];
+    [cancelLabel release];
 	[graceTimer release];
 	[minShowTimer release];
 	[showStarted release];
@@ -319,6 +324,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 #pragma mark - Internal show & hide operations
 
 - (void)showUsingAnimation:(BOOL)animated {
+
 	if (animated && animationType == MBProgressHUDAnimationZoomIn) {
 		self.transform = CGAffineTransformConcat(rotationTransform, CGAffineTransformMakeScale(0.5f, 0.5f));
 	} else if (animated && animationType == MBProgressHUDAnimationZoomOut) {
@@ -371,6 +377,8 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 
 - (void)done {
 	[NSObject cancelPreviousPerformRequestsWithTarget:self];
+    [self removeGestureRecognizer:tapGestureRecogniser];
+
 	isFinished = YES;
 	self.alpha = 0.0f;
 	if (removeFromSuperViewOnHide) {
@@ -482,20 +490,22 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	[self addSubview:detailsLabel];
 
 #pragma mark _MY_CUSTOM_CODE
-	cancelButton = [UIButton buttonWithType:UIButtonTypeRoundedRect];
-    cancelButton.titleLabel.font = self.labelFont;
-	cancelButton.titleLabel.adjustsFontSizeToFitWidth = NO;
-	cancelButton.titleLabel.textAlignment = MBLabelAlignmentCenter;
-	cancelButton.titleLabel.opaque = YES;
-	cancelButton.titleLabel.backgroundColor = [UIColor clearColor];
-	cancelButton.titleLabel.textColor = self.labelColor;
-    [cancelButton setTitleColor:self.labelColor forState:UIControlStateNormal];
-    [cancelButton setTitle:@" Cancel  " forState:UIControlStateNormal];
-	cancelButton.titleLabel.numberOfLines = 1;
-    [cancelButton addTarget:self action:@selector(cancelButtonPressed:) forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:cancelButton];
-    cancelButton.backgroundColor = [UIColor redColor];
+//    if (self.cancelBlock) {
+        cancelLabel = [[UILabel alloc] initWithFrame:self.bounds];
+        cancelLabel.font = self.detailsLabelFont;
+        cancelLabel.adjustsFontSizeToFitWidth = NO;
+        cancelLabel.textAlignment = MBLabelAlignmentCenter;
+        cancelLabel.opaque = NO;
+        cancelLabel.backgroundColor = [UIColor clearColor];
+        cancelLabel.textColor = [UIColor whiteColor];
+        cancelLabel.numberOfLines = 0;
+        [cancelLabel setText:@" Tap to Cancel "];
+        [cancelLabel setUserInteractionEnabled:YES];
+        [self addSubview:cancelLabel];
+        [cancelLabel addGestureRecognizer:tapGestureRecogniser];
+//    }
 }
+
 
 #pragma mark _MY_CUSTOM_CODE
 
@@ -513,24 +523,22 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
     if(CGRectContainsPoint(progressRect, loc)){
         //do any actions here (cancel operation for example)
         [self hide:YES];
+#if NS_BLOCKS_AVAILABLE
+        if (self.cancelBlock) {
+            self.cancelBlock();
+            self.cancelBlock = NULL;
+        }
+#endif
+        if ([delegate respondsToSelector:@selector(cancelButtonPressed:)]) {
+            [delegate cancelButtonPressed:self];
+        }
+
     }else{
         //the tap location was not in the bezel region of the HUD so ignore it.
         return;
     }
 }
 
-
-- (IBAction)cancelButtonPressed:(id)sender {
-#if NS_BLOCKS_AVAILABLE
-    if (self.cancelBlock) {
-        self.cancelBlock();
-        self.cancelBlock = NULL;
-    }
-#endif
-    if ([delegate respondsToSelector:@selector(cancelButtonPressed:)]) {
-        [delegate cancelButtonPressed:self];
-    }
-}
 
 - (void)updateIndicators {
 	
@@ -608,14 +616,12 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	}
 
 #pragma mark _MY_CUSTOM_CODE
-    
-    UILabel *cancelButtonLabel = cancelButton.titleLabel;
-    CGSize cancelButtonSize = MB_TEXTSIZE(cancelButtonLabel.text, cancelButtonLabel.font);
-    cancelButtonSize.width = MIN(cancelButtonSize.width, maxWidth);
-	totalSize.width = MAX(totalSize.width, cancelButtonSize.width);
-	totalSize.height += cancelButtonSize.height;
-    totalSize.height += 4*kPadding;
 
+    CGSize cancelLabelSize = MB_TEXTSIZE(cancelLabel.text, cancelLabel.font);
+    cancelLabelSize.width = MIN(cancelLabelSize.width, maxWidth);
+    totalSize.width = MAX(totalSize.width, cancelLabelSize.width);
+    totalSize.height += cancelLabelSize.height;
+    totalSize.height += 4*kPadding;
 
 	CGFloat remainingHeight = bounds.size.height - totalSize.height - kPadding - 4 * margin; 
 	CGSize maxSize = CGSizeMake(maxWidth, remainingHeight);
@@ -660,35 +666,41 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 
 	yPos += detailsLabelF.size.height;
 
-	if (cancelButtonSize.height > 0.f && (detailsLabelSize.height > 0.f || indicatorF.size.height > 0.f || labelSize.height > 0.f)) {
+	if (cancelLabelSize.height > 0.f && (detailsLabelSize.height > 0.f || indicatorF.size.height > 0.f || labelSize.height > 0.f)) {
 		yPos += 4*kPadding;
 	}
 
-    CGRect cancelButtonF;
-    cancelButtonF.origin.y = yPos;
-    cancelButtonF.origin.x = round((bounds.size.width - cancelButtonSize.width) / 2) + xPos;
-    cancelButtonF.size = cancelButtonSize;
-    cancelButton.frame = cancelButtonF;
-	
-	// Enforce minsize and quare rules
-	if (square) {
-		CGFloat max = MAX(totalSize.width, totalSize.height);
-		if (max <= bounds.size.width - 2 * margin) {
-			totalSize.width = max;
-		}
-		if (max <= bounds.size.height - 2 * margin) {
-			totalSize.height = max;
-		}
-	}
-	if (totalSize.width < minSize.width) {
-		totalSize.width = minSize.width;
-	} 
-	if (totalSize.height < minSize.height) {
-		totalSize.height = minSize.height;
-	}
-	
-	size = totalSize;
-}
+    CGRect cancelLabelF;
+    cancelLabelF.origin.y = yPos;
+    cancelLabelF.origin.x = round((bounds.size.width - cancelLabelSize.width) / 2) + xPos;
+
+    cancelLabelF.size = cancelLabelSize;
+    cancelLabel.frame = cancelLabelF;
+    
+    
+    // Enforce minsize and quare rules
+    if (square) {
+        CGFloat max = MAX(totalSize.width, totalSize.height);
+        if (max <= bounds.size.width - 2 * margin) {
+            totalSize.width = max;
+        }
+        if (max <= bounds.size.height - 2 * margin) {
+            totalSize.height = max;
+        }
+    }
+    if (totalSize.width < minSize.width) {
+        totalSize.width = minSize.width;
+    }
+    if (totalSize.height < minSize.height) {
+        totalSize.height = minSize.height;
+    }
+    
+    size = totalSize;
+    
+
+    
+
+ }
 
 #pragma mark BG Drawing
 
@@ -739,6 +751,25 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	CGContextClosePath(context);
 	CGContextFillPath(context);
 
+    CGFloat xPos = cancelLabel.frame.origin.x;
+    CGFloat yPos = cancelLabel.frame.origin.y;
+    CGFloat xSize = cancelLabel.frame.size.width;
+    CGFloat ySize = cancelLabel.frame.size.height;
+
+    CGRect cancelRect = CGRectMake(xPos-2,yPos-3,xSize+8,ySize+8);
+
+//    CGRect cancelRect = CGRectMake(boxRect.origin.x+20, (boxRect.origin.y+boxRect.size.height * 2/3)+5, boxRect.size.width-40, (boxRect.size.height /4)-10 );
+    UIBezierPath* ovalPath = [UIBezierPath bezierPathWithRoundedRect:cancelRect cornerRadius:30];
+    [[UIColor clearColor] setFill];
+    [ovalPath fill];
+    [[UIColor whiteColor] setStroke];
+    ovalPath.lineWidth = 1;
+    [ovalPath stroke];
+    CGContextBeginPath(context);
+    CGContextAddPath(context, ovalPath.CGPath);
+    CGContextClosePath(context);
+    CGContextFillPath(context);
+    
 	UIGraphicsPopContext();
 }
 
