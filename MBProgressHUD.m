@@ -113,7 +113,7 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 @synthesize activityIndicatorColor;
 #if NS_BLOCKS_AVAILABLE
 @synthesize completionBlock;
-@synthesize cancelBlock;
+@synthesize cancelBlock = _cancelBlock;
 #endif
 
 #pragma mark - Class methods
@@ -251,6 +251,23 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 #endif
 	[super dealloc];
 #endif
+}
+
+- (void)setCancelBlock:(MBProgressHUDCompletionBlock)cancelBlock {
+    _cancelBlock = [cancelBlock copy];
+    if (_cancelBlock) {
+        [cancelLabel setHidden:NO];
+        [cancelLabel addGestureRecognizer:tapGestureRecogniser];
+        [self setNeedsDisplay];
+    } else {
+        [cancelLabel setHidden:YES];
+        [cancelLabel removeGestureRecognizer:tapGestureRecogniser];
+        [self setNeedsDisplay];
+    }
+}
+
+- (MBProgressHUDCompletionBlock)cancelBlock {
+    return _cancelBlock;
 }
 
 #pragma mark - Show & hide
@@ -490,20 +507,18 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	[self addSubview:detailsLabel];
 
 #pragma mark _MY_CUSTOM_CODE
-//    if (self.cancelBlock) {
-        cancelLabel = [[UILabel alloc] initWithFrame:self.bounds];
-        cancelLabel.font = self.detailsLabelFont;
-        cancelLabel.adjustsFontSizeToFitWidth = NO;
-        cancelLabel.textAlignment = MBLabelAlignmentCenter;
-        cancelLabel.opaque = NO;
-        cancelLabel.backgroundColor = [UIColor clearColor];
-        cancelLabel.textColor = [UIColor whiteColor];
-        cancelLabel.numberOfLines = 0;
-        [cancelLabel setText:@" Tap to Cancel "];
-        [cancelLabel setUserInteractionEnabled:YES];
-        [self addSubview:cancelLabel];
-        [cancelLabel addGestureRecognizer:tapGestureRecogniser];
-//    }
+    cancelLabel = [[UILabel alloc] initWithFrame:self.bounds];
+    cancelLabel.font = self.detailsLabelFont;
+    cancelLabel.adjustsFontSizeToFitWidth = NO;
+    cancelLabel.textAlignment = MBLabelAlignmentCenter;
+    cancelLabel.opaque = NO;
+    cancelLabel.backgroundColor = [UIColor clearColor];
+    cancelLabel.textColor = [UIColor whiteColor];
+    cancelLabel.numberOfLines = 0;
+    [cancelLabel setText:@" Tap to Cancel "];
+    [cancelLabel setUserInteractionEnabled:YES];
+    [self addSubview:cancelLabel];
+    [cancelLabel addGestureRecognizer:tapGestureRecogniser];
 }
 
 
@@ -617,20 +632,25 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 
 #pragma mark _MY_CUSTOM_CODE
 
-    CGSize cancelLabelSize = MB_TEXTSIZE(cancelLabel.text, cancelLabel.font);
-    cancelLabelSize.width = MIN(cancelLabelSize.width, maxWidth);
-    totalSize.width = MAX(totalSize.width, cancelLabelSize.width);
-    totalSize.height += cancelLabelSize.height;
-    totalSize.height += 4*kPadding;
+    CGSize cancelLabelSize;
+    if (!cancelLabel.hidden) {
+        cancelLabelSize = MB_TEXTSIZE(cancelLabel.text, cancelLabel.font);
+        cancelLabelSize.width = MIN(cancelLabelSize.width, maxWidth);
+        totalSize.width = MAX(totalSize.width, cancelLabelSize.width);
+        totalSize.height += cancelLabelSize.height;
+        totalSize.height += 4*kPadding;
+    } else {
+        cancelLabelSize = CGSizeZero;
+    }
 
-	CGFloat remainingHeight = bounds.size.height - totalSize.height - kPadding - 4 * margin; 
-	CGSize maxSize = CGSizeMake(maxWidth, remainingHeight);
-	CGSize detailsLabelSize = MB_MULTILINE_TEXTSIZE(detailsLabel.text, detailsLabel.font, maxSize, detailsLabel.lineBreakMode);
-	totalSize.width = MAX(totalSize.width, detailsLabelSize.width);
-	totalSize.height += detailsLabelSize.height;
-	if (detailsLabelSize.height > 0.f && (indicatorF.size.height > 0.f || labelSize.height > 0.f)) {
-		totalSize.height += kPadding;
-	}
+    CGFloat remainingHeight = bounds.size.height - totalSize.height - kPadding - 4 * margin;
+    CGSize maxSize = CGSizeMake(maxWidth, remainingHeight);
+    CGSize detailsLabelSize = MB_MULTILINE_TEXTSIZE(detailsLabel.text, detailsLabel.font, maxSize, detailsLabel.lineBreakMode);
+    totalSize.width = MAX(totalSize.width, detailsLabelSize.width);
+    totalSize.height += detailsLabelSize.height;
+    if (detailsLabelSize.height > 0.f && (indicatorF.size.height > 0.f || labelSize.height > 0.f)) {
+        totalSize.height += kPadding;
+    }
 	
 	totalSize.width += 2 * margin;
 	totalSize.height += 2 * margin;
@@ -751,25 +771,26 @@ static const CGFloat kDetailsLabelFontSize = 12.f;
 	CGContextClosePath(context);
 	CGContextFillPath(context);
 
-    CGFloat xPos = cancelLabel.frame.origin.x;
-    CGFloat yPos = cancelLabel.frame.origin.y;
-    CGFloat xSize = cancelLabel.frame.size.width;
-    CGFloat ySize = cancelLabel.frame.size.height;
+    if (!cancelLabel.hidden) {
+        CGFloat xPos = cancelLabel.frame.origin.x;
+        CGFloat yPos = cancelLabel.frame.origin.y;
+        CGFloat xSize = cancelLabel.frame.size.width;
+        CGFloat ySize = cancelLabel.frame.size.height;
+        
+        CGRect cancelRect = CGRectMake(xPos-2,yPos-3,xSize+8,ySize+8);
+        
+        UIBezierPath* ovalPath = [UIBezierPath bezierPathWithRoundedRect:cancelRect cornerRadius:30];
+        [[UIColor clearColor] setFill];
+        [ovalPath fill];
+        [[UIColor whiteColor] setStroke];
+        ovalPath.lineWidth = 1;
+        [ovalPath stroke];
+        CGContextBeginPath(context);
+        CGContextAddPath(context, ovalPath.CGPath);
+        CGContextClosePath(context);
+        CGContextFillPath(context);
+    }
 
-    CGRect cancelRect = CGRectMake(xPos-2,yPos-3,xSize+8,ySize+8);
-
-//    CGRect cancelRect = CGRectMake(boxRect.origin.x+20, (boxRect.origin.y+boxRect.size.height * 2/3)+5, boxRect.size.width-40, (boxRect.size.height /4)-10 );
-    UIBezierPath* ovalPath = [UIBezierPath bezierPathWithRoundedRect:cancelRect cornerRadius:30];
-    [[UIColor clearColor] setFill];
-    [ovalPath fill];
-    [[UIColor whiteColor] setStroke];
-    ovalPath.lineWidth = 1;
-    [ovalPath stroke];
-    CGContextBeginPath(context);
-    CGContextAddPath(context, ovalPath.CGPath);
-    CGContextClosePath(context);
-    CGContextFillPath(context);
-    
 	UIGraphicsPopContext();
 }
 
